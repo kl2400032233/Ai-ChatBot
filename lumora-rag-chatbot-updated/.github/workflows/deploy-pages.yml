@@ -1,0 +1,56 @@
+# Builds the React UI and publishes it to GitHub Pages.
+#
+# One-time setup:
+# 1. Push this folder as a GitHub repo (repo root = the folder with api.py).
+# 2. Repo Settings -> Pages -> Source: "GitHub Actions".
+# 3. Repo Settings -> Secrets -> Actions -> New secret:
+#      VITE_API_BASE_URL = https://<your-api>.onrender.com   (no trailing slash)
+# 4. Push to main -> your site goes live at https://<user>.github.io/<repo>/
+name: Deploy frontend to GitHub Pages
+
+on:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          # NOTE: no npm cache on purpose — a cached npm store has been seen
+          # skipping platform-specific native bindings (npm/cli#4828).
+      - run: npm ci --no-audit --no-fund
+        working-directory: frontend
+      - run: npm run build
+        working-directory: frontend
+        env:
+          # Repository secret wins when set; otherwise fall back to the known
+          # Render backend so the public site works with zero extra setup.
+          VITE_API_BASE_URL: ${{ secrets.VITE_API_BASE_URL || 'https://lumen-rag-api-rsmi.onrender.com' }}
+          VITE_SUPABASE_URL: ${{ secrets.VITE_SUPABASE_URL }}
+          VITE_SUPABASE_PUBLISHABLE_KEY: ${{ secrets.VITE_SUPABASE_PUBLISHABLE_KEY }}
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: frontend/dist
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4
